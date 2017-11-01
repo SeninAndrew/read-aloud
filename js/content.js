@@ -348,6 +348,10 @@ function KhanAcademy() {
 
 function HtmlDoc() {
   var headingTags = "H1, H2, H3, H4, H5, H6";
+  var listTags = "ol, ul, dl, dir";
+  var frameTags = "frame, iframe";
+  var ignoredTags = "a[href], fieldset, input, select, textarea, button, datalist, output, audio, video, colgroup, del, dialog, embed, label, map, menu, nav, noframes, noscript, object, ruby, s, script, strike, style";
+  var containerTags = "body, frameset, form, div, span, header, footer, main, section, article, summary, thead, tfoot, tbody, tr, th, td";
 
   this.getCurrentIndex = function() {
     return 0;
@@ -360,22 +364,18 @@ function HtmlDoc() {
 
   function parse() {
     //find blocks containing text
-    var textBlocks = [];
+    var toRead = [];
     var walk = function() {
-      if ($(this).is(headingTags + ", a"));
-      else if (isTextBlock(this)) textBlocks.push(this);
-      else if ($(this).is("frame, iframe")) try {walk.call(this.contentDocument.body)} catch(err) {}
-      else $(this).children().each(walk);
+      if (isIgnoredBlock(this));
+      else if (isTextBlock(this)) toRead.push(this);
+      else if ($(this).is(frameTags)) try {walk.call(this.contentDocument.body)} catch(err) {}
+      else if (isContainerBlock(this)) $(this).children().each(walk);
     };
+    var start = new Date().getTime();
     walk.call(document.body);
-    textBlocks = $(textBlocks).filter(":visible").filter(notOutOfView).get();
+    console.log("Walked DOM in", new Date().getTime()-start, "ms");
 
     //mark the elements to be read
-    var toRead = [];
-    for (var i=0; i<textBlocks.length; i++) {
-      toRead.push.apply(toRead, findHeadingsFor(textBlocks[i], textBlocks[i-1]));
-      toRead.push(textBlocks[i]);
-    }
     $(toRead).addClass("read-aloud");   //for debugging only
 
     //extract texts
@@ -383,66 +383,46 @@ function HtmlDoc() {
     return flatten(texts).filter(isNotEmpty);
   }
 
+  function isIgnoredBlock(elem) {
+    var position = $(elem).css("position");
+    return $(elem).is(ignoredTags) ||
+      $(elem).css("float") == "right" ||
+      position == "fixed" || position == "absolute" ||
+      $(elem).is(":hidden") ||
+      !notOutOfView.call(elem);
+  }
+
   function isTextBlock(elem) {
-    return childNodes(elem).some(function(child) {
-      return child.nodeType == 1 && $(child).is("p") && child.innerText.trim().length > 100 ||
-        child.nodeType == 3 && child.nodeValue.trim().length > 100;
-    })
+    return $(elem).is("details, figure, p, blockquote, pre, code") ||
+      $(elem).is(headingTags) ||
+      $(elem).is(listTags) && $(elem).siblings("p").length ||
+      childNodes(elem).some(function(child) {
+        return child.nodeType == 3 && child.nodeValue.trim().length >= 3;
+      })
+  }
+
+  function isContainerBlock(elem) {
+    return $(elem).is("table") && $(elem).find(">tbody >tr:last >td").length <= 3 ||
+      $(elem).is(containerTags);
   }
 
   function getText(elem) {
-    $(elem).find("ol, ul").each(function() {
-      $(this).children("li").each(function(index) {
-        if (!$(this.firstChild).is(".read-aloud-numbering"))
-          $("<span>").addClass("read-aloud-numbering").text((index +1) + ". ").prependTo(this);
+    var texts;
+    if ($(elem).is(listTags)) {
+      texts = $(elem).children("li").get().map(function(child, index) {
+        return (index +1) + ". " + child.innerText.trim();
       })
-    });
-    $(elem).find(".read-aloud-numbering").show();
-    var tmp = $(elem).find(":visible").filter(dontRead).toggle();
-    var texts = addMissingPunctuation(elem.innerText).trim().split(readAloud.paraSplitter);
-    tmp.toggle();
-    $(elem).find(".read-aloud-numbering").hide();
+    }
+    else {
+      var tmp = $(elem).find("sup").hide();
+      texts = addMissingPunctuation(elem.innerText).trim().split(readAloud.paraSplitter);
+      tmp.show();
+    }
     return texts;
-  }
-
-  function dontRead() {
-    var float = $(this).css("float");
-    var position = $(this).css("position");
-    return $(this).is("sup") || float == "right" || position == "absolute" || position == "fixed";
   }
 
   function addMissingPunctuation(text) {
     return text.replace(/(\w)(\s*?\r?\n)/g, "$1.$2");
-  }
-
-  function findHeadingsFor(block, prevBlock) {
-    var result = [];
-    var firstInnerElem = $(block).find(headingTags + ", p").filter(":visible").get(0);
-    var currentLevel = getHeadingLevel(firstInnerElem);
-    var node = previousNode(block, true);
-    while (node && node != prevBlock) {
-      if (node.nodeType == 1 && $(node).is(":visible")) {
-        var level = getHeadingLevel(node);
-        if (level < currentLevel) {
-          result.push(node);
-          currentLevel = level;
-        }
-      }
-      node = previousNode(node);
-    }
-    return result.reverse();
-  }
-
-  function getHeadingLevel(elem) {
-    var matches = elem && /^H(\d)$/i.exec(elem.tagName);
-    return matches ? Number(matches[1]) : 100;
-  }
-
-  function previousNode(node, skipChildren) {
-    if ($(node).is('body')) return null;
-    if (node.nodeType == 1 && !skipChildren && node.lastChild) return node.lastChild;
-    if (node.previousSibling) return node.previousSibling;
-    return previousNode(node.parentNode, true);
   }
 
   function notOutOfView() {
