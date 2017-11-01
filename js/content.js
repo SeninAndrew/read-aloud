@@ -384,10 +384,9 @@ function HtmlDoc() {
   }
 
   function isIgnoredBlock(elem) {
-    var position = $(elem).css("position");
     return $(elem).is(ignoredTags) ||
       $(elem).css("float") == "right" ||
-      position == "fixed" || position == "absolute" ||
+      $(elem).css("position") == "fixed" ||
       $(elem).is(":hidden") ||
       !notOutOfView.call(elem);
   }
