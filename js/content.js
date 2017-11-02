@@ -350,8 +350,7 @@ function HtmlDoc() {
   var headingTags = "H1, H2, H3, H4, H5, H6";
   var listTags = "ol, ul, dl, dir";
   var frameTags = "frame, iframe";
-  var ignoredTags = "a[href], fieldset, input, select, textarea, button, datalist, output, audio, video, colgroup, del, dialog, embed, label, map, menu, nav, noframes, noscript, object, ruby, s, script, strike, style";
-  var containerTags = "body, frameset, form, div, span, header, footer, main, section, article, summary, thead, tfoot, tbody, tr, th, td";
+  var ignoredTags = "fieldset, input, select, textarea, button, datalist, output, audio, video, colgroup, del, dialog, embed, label, map, menu, nav, noframes, noscript, object, ruby, s, script, strike, style";
 
   this.getCurrentIndex = function() {
     return 0;
@@ -366,66 +365,53 @@ function HtmlDoc() {
     //find blocks containing text
     var toRead = [];
     var walk = function() {
-      if (isIgnoredBlock(this));
-      else if (isTextBlock(this)) toRead.push(this);
+      if (isIgnore(this));
       else if ($(this).is(frameTags)) try {walk.call(this.contentDocument.body)} catch(err) {}
-      else if (isContainerBlock(this)) $(this).children().each(walk);
+      else if (isRead(this)) toRead.push(this);
+      else if (!$(this).is(listTags) || $(this).siblings("p").length) $(this).children().each(walk);
     };
     var start = new Date().getTime();
     walk.call(document.body);
     console.log("Walked DOM in", new Date().getTime()-start, "ms");
 
-    //mark the elements to be read
-    $(toRead).addClass("read-aloud");   //for debugging only
+    //trim
+    var head = {level: 99, index: 0};
+    for (var i=0; i<toRead.length; i++) {
+      var level = getHeadingLevel(toRead[i]);
+      if (level && level < head.level) head = {level: level, index: i};
+    }
 
-    //extract texts
-    var texts = toRead.map(getText);
-    return flatten(texts).filter(isNotEmpty);
+    var texts = toRead.map(function(elem) {
+      return (elem.innerText || elem.textContent).trim();
+    })
+    var tail = null;
+    for (var i=texts.length-2; i>=0 && tail==null; i--) {
+      var dist = getGaussian(texts, i+1, texts.length);
+      if (dist.stdev > 0 && texts[i].length >= dist.mean + 2*dist.stdev) tail = i+1;
+    }
+
+    toRead = toRead.slice(head.index < tail ? head.index : 0, tail || texts.length);
+
+    //mark the elements for debugging
+    $(toRead).addClass("read-aloud");
+    return flatten(toRead.map(getText)).filter(isNotEmpty);
   }
 
-  function isIgnoredBlock(elem) {
+  function isIgnore(elem) {
     return $(elem).is(ignoredTags) ||
-      $(elem).css("float") == "right" ||
+      isHidden(elem) ||
       $(elem).css("position") == "fixed" ||
-      $(elem).is(":hidden") ||
-      !notOutOfView.call(elem);
+      $(elem).css("float") == "right";
   }
 
-  function isTextBlock(elem) {
-    return $(elem).is("details, figure, p, blockquote, pre, code") ||
-      $(elem).is(headingTags) ||
-      $(elem).is(listTags) && $(elem).siblings("p").length ||
-      childNodes(elem).some(function(child) {
-        return child.nodeType == 3 && child.nodeValue.trim().length >= 3;
-      })
+  function isHidden(elem) {
+    //check width/height/clip?
+    return $(elem).is(":hidden") || $(elem).offset().left < 0;
   }
 
-  function isContainerBlock(elem) {
-    return $(elem).is("table") && $(elem).find(">tbody >tr:last >td").length <= 3 ||
-      $(elem).is(containerTags);
-  }
-
-  function getText(elem) {
-    var texts;
-    if ($(elem).is(listTags)) {
-      texts = $(elem).children("li").get().map(function(child, index) {
-        return (index +1) + ". " + child.innerText.trim();
-      })
-    }
-    else {
-      var tmp = $(elem).find("sup").hide();
-      texts = addMissingPunctuation(elem.innerText).trim().split(readAloud.paraSplitter);
-      tmp.show();
-    }
-    return texts;
-  }
-
-  function addMissingPunctuation(text) {
-    return text.replace(/(\w)(\s*?\r?\n)/g, "$1.$2");
-  }
-
-  function notOutOfView() {
-    return $(this).offset().left >= 0;
+  function isRead(elem) {
+    return $(elem).is("details, figure, p, blockquote, pre, code, li, " + headingTags) ||
+      childNodes(elem).some(isNonEmptyTextNode);
   }
 
   function childNodes(elem) {
@@ -438,8 +424,48 @@ function HtmlDoc() {
     return result;
   }
 
+  function isNonEmptyTextNode(elem) {
+    return elem.nodeType == 3 && elem.nodeValue.trim().length > 1;
+  }
+
+  function getGaussian(texts, start, end) {
+    var sum = 0;
+    for (var i=start; i<end; i++) sum += texts[i].length;
+    var mean = sum / (end-start);
+    var variance = 0;
+    for (var i=start; i<end; i++) variance += (texts[i].length-mean)*(texts[i].length-mean);
+    return {mean: mean, stdev: Math.sqrt(variance)};
+  }
+
+  function getText(elem) {
+    var texts;
+    if ($(elem).is("li")) {
+      texts = [($(elem).index() +1) + ". " + elem.innerText.trim()];
+    }
+    else if ($(elem).is(headingTags)) {
+      var tmp = $(elem).children(":first").is("a") ? null : $(elem).find("a:visible").hide();
+      texts = [elem.innerText.trim()];
+      if (tmp) tmp.show();
+    }
+    else {
+      var tmp = $(elem).find("sup").hide();
+      texts = addMissingPunctuation(elem.innerText || elem.textContent).trim().split(readAloud.paraSplitter);
+      tmp.show();
+    }
+    return texts;
+  }
+
+  function addMissingPunctuation(text) {
+    return text.replace(/(\w)(\s*?\r?\n)/g, "$1.$2");
+  }
+
   function flatten(array) {
     return [].concat.apply([], array);
+  }
+
+  function getHeadingLevel(elem) {
+    var matches = elem && /^H(\d)$/i.exec(elem.tagName);
+    return matches && Number(matches[1]);
   }
 }
 
