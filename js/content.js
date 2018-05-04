@@ -247,7 +247,7 @@ function PdfDoc(url) {
       queue.trigger("loadDocument", url);
     })
     queue.once("documentLoaded", fulfill);
-    loadPageScript("https://assets.lsdsoftware.com/read-aloud/page-scripts/pdf-viewer.js");
+    loadPageScript("");
   })
 
   this.getCurrentIndex = function() {

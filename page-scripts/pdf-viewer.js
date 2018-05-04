@@ -107,7 +107,7 @@
    */
   function loadViewer() {
     if (window.PDFViewerApplication) return Promise.resolve();
-    var viewerBase = "https://assets.lsdsoftware.com/read-aloud/pdf-viewer/web/";
+    var viewerBase = "";
     console.log("Loading PDF viewer...");
 
     return loadCss(viewerBase + "viewer.css")

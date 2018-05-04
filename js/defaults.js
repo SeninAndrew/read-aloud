@@ -1,7 +1,7 @@
 var brapi = (typeof chrome != 'undefined') ? chrome : (typeof browser != 'undefined' ? browser : {});
 
 var config = {
-  serviceUrl: "https://support.lsdsoftware.com",
+  serviceUrl: "",
   entityMap: {
     '&': '&amp;',
     '<': '&lt;',
@@ -87,11 +87,11 @@ function isGoogleTranslate(voiceName) {
 }
 
 function isAmazonPolly(voiceName) {
-  return /^Amazon /.test(voiceName);
+  return false;
 }
 
 function isMicrosoftCloud(voiceName) {
-  return /^Microsoft /.test(voiceName) && voiceName.indexOf(' - ') == -1;
+  return false;
 }
 
 function isRemoteVoice(voiceName) {

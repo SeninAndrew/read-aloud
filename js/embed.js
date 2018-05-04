@@ -68,7 +68,6 @@ var readAloud = new function() {
     this.getVoice = function(lang) {
       return getVoices().then(function(voices) {
         return findVoiceByLang(voices.filter(function(voice) {return !isRemoteVoice(voice.voiceName)}), lang)
-          || findVoiceByLang(voices.filter(function(voice) {return isMicrosoftCloud(voice.voiceName)}), lang)
           || findVoiceByLang(voices, lang);
       })
     }
